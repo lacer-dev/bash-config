@@ -1,0 +1,6 @@
+#
+# ~/.inputrc
+#
+
+set completion-ignore-case On
+set bell-style none
