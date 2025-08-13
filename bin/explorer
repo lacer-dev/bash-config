@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+#
+# Script for invoking the Windows File Explorer with Unix-style directory paths.
+# Works on WSL, MSYS2, and Cygwin
+#
+
+function log() {
+  echo "$(basename "$0"): $*" >&2
+}
+
+function see-help() {
+  echo "See '$(basename "$0") --help' for more info" >&2
+}
+
+# identify path-conversion tool
+declare conv_tool_path
+if command -v wslpath &>/dev/null; then
+  conv_tool_path='wslpath'
+elif command -v cygpath &>/dev/null; then
+  conv_tool_path='cygpath'
+else
+  log "this platform is not supported"
+  see-help
+  exit 2
+fi
+
+# locate Windows Explorer
+explorer_path="$("$conv_tool_path" -ua 'C:/Windows/explorer.exe')"
+if ! command -v "$explorer_path" &>/dev/null; then
+  log "explorer.exe was not found"
+  see-help
+  exit 2
+fi
+
+# process arguments
+args=$(getopt -a -n "$(basename "$0")" -o 'hs' -l 'help,strip,no-symlinks' -- "${@:1}")
+errc=$?
+if [[ $errc -eq 0 ]]; then
+  eval set -- "$args"
+elif [[ $errc -ne 0 ]]; then
+  log "invalid arguments"
+  see-help
+  exit 1
+fi
+
+no_symlinks='n'
+while [ $# -gt 0 ]; do
+  case $1 in
+  --help | -h)
+    echo "Usage: $(basename "$0") DIR"
+    echo "Opens DIR in the Windows File Explorer."
+    echo "Options:"
+    echo "    -s, --strip, --no-symlinks    if DIR is a symlink, don't expand it."
+    echo "                                   Only works with MSYS2 and Cygwin."
+    echo "Exit status:"
+    echo "  0  if OK,"
+    echo "  1  if DIR does not exist, is not a directory, or the user lacks reading"
+    echo "      permissions, or"
+    echo "  2  if explorer.exe can't be located, or neither wslpath or cygpath"
+    echo "      are available on this system."
+    echo "Notes:"
+    echo "  --no-symlinks may cause issues if Developer Mode is not enabled (through"
+    echo "   Windows settings), as symlinks are not supported on regular Windows."
+    echo "  Windows shortcuts (.lnk files) are not supported and are interpreted"
+    echo "   as regular files."
+    exit 0
+    ;;
+  -s | --strip | --no-symlinks)
+    no_symlinks='y'
+    ;;
+  --)
+    shift
+    break
+    ;;
+  *)
+    break
+    ;;
+  esac
+  shift
+done
+
+if [ $# -gt 1 ]; then
+  for arg in "${@:2}"; do
+    log "invalid argument \"$arg\""
+  done
+  see-help
+  exit 1
+elif [[ $# -eq 0 ]]; then
+  log "not enough arguments"
+  see-help
+  exit 1
+fi
+
+unixpath="$1"
+# don't traverse symlinks if --no-symlinks
+if [[ "$no_symlinks" == 'y' ]]; then
+  unixpath="$(realpath -s "$unixpath")"
+else
+  unixpath="$(realpath "$unixpath")"
+fi
+# verify that path exists
+if [[ ! -e "$unixpath" ]]; then
+  log "path '$1' does not exist"
+  see-help
+  exit 1
+fi
+# verify that path is a directory
+if [[ ! -d "$unixpath" ]]; then
+  log "'$1' is not a directory"
+  see-help
+  exit 1
+fi
+# verify that user can access the directory
+if [[ ! -r "$unixpath" ]]; then
+  log "permissions denied '$1'"
+  see-help
+  exit 1
+fi
+# convert path to windows format and open in file explorer
+"$explorer_path" "$("$conv_tool_path" -wa "$unixpath")"
+exit 0
