@@ -28,5 +28,12 @@ alias mktempd='mktemp -d'
 alias restart='tput clear; exec bash -l'
 
 # other commands
-alias cc='clang'
 alias gdb='gdb -q'
+
+if command -v clang >/dev/null; then
+    alias cc='clang'
+fi
+
+if command -v xclip >/dev/null; then
+    alias clip='xclip -selection clipboard'
+fi
