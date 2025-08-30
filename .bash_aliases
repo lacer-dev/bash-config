@@ -4,8 +4,6 @@
 
 # aliases builtin commands
 
-alias '..'='cd ..'
-alias '...'='cd ../..'
 for ((n = 1; n <= 10; n++)); do
     alias_name=".$(for ((i = 0; i < n; i++)); do echo -n '.'; done)"
     alias_value="cd $(for ((i = 0; i < n; i++)); do echo -n '../'; done)"
@@ -30,10 +28,5 @@ alias restart='tput clear; exec bash -l'
 # other commands
 alias gdb='gdb -q'
 
-if command -v clang >/dev/null; then
-    alias cc='clang'
-fi
-
-if command -v xclip >/dev/null; then
-    alias clip='xclip -selection clipboard'
-fi
+command -v clang >/dev/null && alias cc='clang'
+command -v xclip >/dev/null && alias clip='xclip -selection clipboard'
