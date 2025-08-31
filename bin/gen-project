@@ -1,0 +1,229 @@
+#!/usr/bin/env bash
+
+SCRIPTNAME="$(basename "$0")"
+
+print-help() {
+  echo "Usage: $SCRIPTNAME [-l <lang>] [-m <filename>] [-c <compiler>] <dir>"
+  echo
+  echo "Options:"
+  echo "  -l, --language    specifies the language of the project. common values are 'c' and 'cpp'. default is 'c'."
+  echo "  -m, --main-file   sets the name of the main file (without an extension). default is 'main'."
+  echo "  -c, --compiler    specifies the compiler for the project. default for C is 'gcc', C++ is 'g++'"
+  echo "      --help        display this help and exit"
+}
+
+print-see-help() {
+  echo "See '${SCRIPTNAME} --help' for help"
+}
+
+shopt -s nocaseglob
+
+get-language() {
+  if [[ $# -ne 1 ]]; then
+    echo "${SCRIPTNAME}: incorrect number of arguments" >&2
+    return 1
+  fi
+
+  local lang="$1"
+  if [[ "$lang" == 'c' ]]; then
+    echo "$LANG_C"
+  elif [[ "$lang" == +('cpp'|'cxx'|'cc') ]]; then
+    echo "$LANG_CXX"
+  else
+    echo "${SCRIPTNAME}: unknown language '$lang'" >&2
+    return 1
+  fi
+
+  return 0
+}
+
+get-compiler() {
+  if [[ $# -ne 1 ]]; then
+    echo "${SCRIPTNAME}: incorrect number of arguments" >&2
+    return 1
+  fi
+
+  local compiler="$1"
+  if [[ $OPT_LANGUAGE == "$LANG_C" ]]; then
+    if [[ "$compiler" == "gcc" ]]; then
+      echo "$COMPILER_GCC"
+    elif [[ "$compiler" == "clang" ]]; then
+      echo "$COMPILER_CLANG"
+    else
+      echo "${SCRIPTNAME}: unknown C compiler '$compiler'" >&2
+      return 1
+    fi
+  elif [[ $OPT_LANGUAGE == "$LANG_CXX" ]]; then
+    if [[ "$compiler" == +('g++'|'gcc') ]]; then
+      echo "$COMPILER_GXX"
+    elif [[ "$compiler" == +('clang++'|'clang') ]]; then
+      echo "$COMPILER_CLANGXX"
+    else
+      echo "${SCRIPTNAME}: unknown C++ compiler '$compiler'" >&2
+      return 1
+    fi
+  else
+    return 1
+  fi
+
+  return 0
+}
+
+get-file-extension() {
+  if [[ $# -ne 1 ]]; then
+    echo "${SCRIPTNAME}: incorrect number of arguments" >&2
+    return 1
+  fi
+
+  local lang="$1"
+  if [[ "$lang" == "$LANG_C" ]]; then
+    echo 'c'
+  elif [[ "$lang" == "$LANG_CXX" ]]; then
+    echo 'cpp'
+  else
+    echo "${SCRIPTNAME}: unknown language '$lang'" >&2
+    return 1
+  fi
+
+  return 0
+}
+
+# C constants
+readonly LANG_C="LANG.C"
+readonly COMPILER_GCC='gcc'
+readonly COMPILER_CLANG='clang'
+# C++ constants
+readonly LANG_CXX="LANG.CXX"
+readonly COMPILER_GXX='g++'
+readonly COMPILER_CLANGXX='clang++'
+
+readonly DEFAULT_MAIN_FILE_NAME='main'
+
+declare ARG_DIRECTORY
+declare OPT_LANGUAGE="$LANG_C"
+declare OPT_COMPILER
+declare OPT_MAIN_FILE="$DEFAULT_MAIN_FILE_NAME"
+
+if [[ $# -eq 0 ]]; then
+  print-help
+  exit 1
+fi
+
+if ! args=$(getopt -o 'l:,m:,c:' -l 'help,language:,main-file:,compiler:' -- "$@"); then
+  exit 1
+fi
+
+eval set -- "$args"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+  --help)
+    print-help
+    exit 0
+    ;;
+  -l | --language)
+    if ! OPT_LANGUAGE="$(get-language "$2")"; then
+      print-see-help >&2
+      exit 1
+    fi
+    shift
+    ;;
+  -m | --main-file)
+    if [[ -z "$2" ]]; then
+      echo "${SCRIPTNAME}: file name can't be empty" >&2
+      print-see-help >&2
+      exit 1
+    fi
+    OPT_MAIN_FILE="$2"
+    shift
+    ;;
+  -c | --compiler)
+    OPT_COMPILER="$(get-compiler "$2")"
+    shift
+    ;;
+  --)
+    shift
+    break
+    ;;
+  -*)
+    echo "${SCRIPTNAME}: unknown option '$1'" >&2
+    print-see-help >&2
+    exit 1
+    ;;
+  *)
+    break
+    ;;
+  esac
+  shift
+done
+
+if [[ "$OPT_LANGUAGE" == "$LANG_C" ]]; then
+  OPT_COMPILER=${OPT_COMPILER:-"$COMPILER_GCC"}
+elif [[ "$OPT_LANGUAGE" == "$LANG_CXX" ]]; then
+  OPT_COMPILER=${OPT_COMPILER:-"$COMPILER_GXX"}
+else
+  # this control path should never be reached
+  exit 1
+fi
+
+if [[ "$#" -gt 1 ]]; then
+  echo "${SCRIPTNAME}: too many arguments" >&2
+  print-see-help >&2
+  exit 1
+elif [[ "$#" -lt 1 ]]; then
+  echo "${SCRIPTNAME}: missing argument" >&2
+  print-see-help >&2
+  exit 1
+fi
+
+ARG_DIRECTORY="$1"
+MAIN_FILE_NAME="${OPT_MAIN_FILE}.$(get-file-extension "$OPT_LANGUAGE")"
+MAIN_FILE_PATH="${ARG_DIRECTORY}/${MAIN_FILE_NAME}"
+BUILD_SCRIPT_PATH="${ARG_DIRECTORY}/build.sh"
+
+declare -i FAILED=1
+
+if [[ -e "$MAIN_FILE_PATH" ]]; then
+  echo "${SCRIPTNAME}: couldn't create file '${MAIN_FILE_PATH}': file or directory already exists" >&2
+  FAILED=0
+fi
+
+if [[ -e "$BUILD_SCRIPT_PATH" ]]; then
+  echo "${SCRIPTNAME}: couldn't create file '${BUILD_SCRIPT_PATH}': file or directory already exists" >&2
+  FAILED=0
+fi
+
+if [[ "$FAILED" -eq 0 ]]; then
+  print-see-help >&2
+  exit 1
+fi
+
+# create directory
+mkdir -p "$ARG_DIRECTORY"
+# create main file
+touch "$MAIN_FILE_PATH"
+if [[ "$OPT_LANGUAGE" == +("$LANG_C"|"$LANG_CXX") ]]; then
+  if [[ "$OPT_LANGUAGE" == "$LANG_C" ]]; then
+    echo -e '#include <stdio.h>\n' >>"$MAIN_FILE_PATH"
+  elif [[ "$OPT_LANGUAGE" == "$LANG_CXX" ]]; then
+    echo -e '#include <iostream>\n' >>"$MAIN_FILE_PATH"
+  fi
+
+  echo -e "int main(int argc, char* argv[]) {" >>"$MAIN_FILE_PATH"
+
+  if [[ "$OPT_LANGUAGE" == "$LANG_C" ]]; then
+    echo -e '\tprintf("Hello World!\\n");' >>"$MAIN_FILE_PATH"
+  elif [[ "$OPT_LANGUAGE" == "$LANG_CXX" ]]; then
+    echo -e '\tstd::cout << "Hello World!\\n";' >>"$MAIN_FILE_PATH"
+  fi
+
+  echo "}" >>"$MAIN_FILE_PATH"
+fi
+
+# create build script
+touch "$BUILD_SCRIPT_PATH"
+chmod +x "$BUILD_SCRIPT_PATH"
+echo -e "#!/usr/bin/env bash\n$BUILD_COMMAND" >>"$BUILD_SCRIPT_PATH"
+if [[ "$OPT_COMPILER" == +("$COMPILER_GCC"|"$COMPILER_GXX"|"$COMPILER_CLANG"|"$COMPILER_CLANGXX") ]]; then
+  echo "${OPT_COMPILER} -o ${MAIN_FILE_NAME%.*} ${MAIN_FILE_NAME}" >>"$BUILD_SCRIPT_PATH"
+fi
